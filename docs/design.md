@@ -82,11 +82,11 @@ Hashing uses FNV-1a with a per-install random salt stored in `model.json`, so th
 
 ```
 ghi_clear = haurwitz(zenith)
-ghi       = satellite value if fresher than 40 min
+ghi       = satellite value if fresher than 60 min
           else forecast value if available
           else ghi_clear * 0.6
 daylight  = ghi * 110 lm/W * daylight_factor        (daylight_factor = 0.02)
-lux       = max(daylight, artificial_floor)          (artificial_floor = 80 lx)
+lux       = max(daylight, artificial_floor)          (artificial_floor = 40 lx)
 ```
 
 The satellite value is shifted forward by the forecast's change over the delay window, so a cloud that passed 20 minutes ago isn't treated as current. The constants are only the prior's starting point. Learned models see the raw sky features and will correct a wrong daylight factor.
@@ -110,7 +110,7 @@ pub trait Predictor {
 
 **Neighbours.** Gaussian kernel on standardised features with bandwidth 0.7, blended toward the prior when the kernel mass is small.
 
-**Ensemble.** Weights start at `[0.85, 0.05, 0.05, 0.05]` for prior, linear, MLP and neighbours. On each correction every model predicts first, then `w_i *= exp(-eta * s * (p_i - label)^2)` with `eta = 20` and `s` the sample weight (1 for a correction, 0.2 for a weak confirmation). With `eta = 20`, a model that is 0.1 closer than the prior on a typical correction overtakes it within five corrections. Weights are then normalised and floored at 0.01 so no model is locked out, and only after that do the models learn. Output variance is the weighted variance of the members plus their weighted own variance.
+**Ensemble.** Weights start at `[0.85, 0.05, 0.05, 0.05]` for prior, linear, MLP and neighbours. On each correction every model predicts first, then `w_i *= exp(-eta * s * (p_i - label)^2)` with `eta = 20` and `s` the sample weight (1 for a correction, 0.2 for a weak confirmation). With `eta = 20`, a model that is 0.1 closer than the prior on a typical correction overtakes it within five corrections. Weights are then normalised and floored at 0.01 so no model is locked out, and only after that do the models learn. The ensemble reports two numbers besides its mean. Disagreement is the weighted spread of the members' means. Variance adds each member's own variance, capped at the prior's 0.04 so that an untrained member with a huge variance can't dominate. The controller only looks at disagreement: when the members agree, lumend acts on the target even if all of them are still guessing, which is what makes day one follow the prior curve.
 
 **Short-term offset.** After a correction, `offset = label - ensemble(x)` after learning. It decays with a 10-minute half-life and resets when estimated lux moves by more than a factor of three from the value at correction time.
 
@@ -120,7 +120,7 @@ The controller runs on every tick (1 Hz) and on relevant events.
 
 States: `Auto`, `UserAdjusting`, `Held`, `Paused`.
 
-- **Auto.** Compute target `p*`. Move toward it only when `|p* - p_now|` exceeds a deadband of `0.03 + 0.5 * sqrt(variance)`, so an uncertain model moves less. A brightening target must hold for 4 s, a dimming target for 8 s. Ramps run at 0.15 p/s up and 0.01 p/s down. On the perceptual scale 0.01 p/s changes luminance by about 3.5% per second, slow enough that a 0.2 p dim takes 20 seconds. At a break moment (workspace or window change, idle resume, unlock) the controller may step up to 0.15 p at once.
+- **Auto.** Compute target `p*`. Move toward it only when `|p* - p_now|` exceeds a deadband of `0.03 + 0.5 * sqrt(disagreement)`, so lumend moves less while its models still disagree. A brightening target must hold for 4 s, a dimming target for 8 s. Ramps run at 0.15 p/s up and 0.01 p/s down. On the perceptual scale 0.01 p/s changes luminance by about 3.5% per second, slow enough that a 0.2 p dim takes 20 seconds. At a break moment (workspace or window change, idle resume, unlock) the controller may step up to 0.15 p at once.
 - **UserAdjusting.** Entered when the polled level differs from the last level lumend wrote by more than one step. Auto adjustment stops. Every further change restarts the settle timer. When the level has stayed put for `settle_seconds` (30 by default), the controller emits a correction with the features captured at the end of the settle window and moves to `Held`.
 - **Held.** Keeps the user's level for at least 3 minutes and until the short-term offset has decayed to less than the deadband, unless estimated lux changes by a factor of three.
 - **Paused.** Set over the CLI. No writes, no learning.

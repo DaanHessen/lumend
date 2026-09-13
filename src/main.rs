@@ -22,6 +22,9 @@ enum Cmd {
     Run {
         #[arg(long, value_name = "FILE")]
         config: Option<PathBuf>,
+        /// Log what would change instead of touching the backlight or saving anything
+        #[arg(long)]
+        dry_run: bool,
     },
     /// Show what the daemon is doing
     Status {
@@ -47,7 +50,7 @@ enum Cmd {
 fn main() -> ExitCode {
     let cli = Cli::parse();
     let result = match cli.command.unwrap_or(Cmd::Status { json: false }) {
-        Cmd::Run { config } => run(config),
+        Cmd::Run { config, dry_run } => run(config, dry_run),
         Cmd::Status { json } => query(Request::Status, json, print_status),
         Cmd::Why { json } => query(Request::Why, json, print_why),
         Cmd::Pause { minutes } => query(Request::Pause { minutes }, false, |_| match minutes {
@@ -71,7 +74,7 @@ fn main() -> ExitCode {
     }
 }
 
-fn run(config_path: Option<PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
+fn run(config_path: Option<PathBuf>, dry_run: bool) -> Result<(), Box<dyn std::error::Error>> {
     let filter = tracing_subscriber::EnvFilter::try_from_env("LUMEND_LOG")
         .unwrap_or_else(|_| "lumend=info".into());
     let journald = std::env::var_os("JOURNAL_STREAM").is_some();
@@ -85,7 +88,7 @@ fn run(config_path: Option<PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
     }
     let path = config_path.unwrap_or_else(Config::default_path);
     let config = Config::load(&path)?;
-    lumend::daemon::run(config)
+    lumend::daemon::run(config, dry_run)
 }
 
 fn query(
@@ -125,7 +128,7 @@ fn print_status(d: &Value) {
     println!("level       {} of {}", d["level"], d["max_level"]);
     if !d["target_level"].is_null() {
         println!(
-            "target      {} (uncertainty ±{} p)",
+            "target      {} (models disagree by ±{} p)",
             d["target_level"],
             num(&d["uncertainty"], 3)
         );

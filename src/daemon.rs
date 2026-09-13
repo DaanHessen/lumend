@@ -71,6 +71,7 @@ struct Core {
     screen_active: Arc<AtomicBool>,
     last: Option<Snapshot>,
     session_corrections: u32,
+    dry_run: bool,
 }
 
 fn unix_now() -> f64 {
@@ -121,7 +122,10 @@ fn load_model(store: &Store, samples: &[Sample]) -> (u64, Ensemble) {
     }
 }
 
-pub fn run(config: Config) -> Result<(), Error> {
+pub fn run(config: Config, dry_run: bool) -> Result<(), Error> {
+    if dry_run {
+        tracing::info!("dry run: the backlight will not be changed and nothing will be saved");
+    }
     let device = backlight::discover(
         Path::new(backlight::SYSFS_ROOT),
         config.backlight.device.as_deref(),
@@ -132,7 +136,7 @@ pub fn run(config: Config) -> Result<(), Error> {
 
     let store = Store::open(paths::state_dir())?;
     let mut samples = store.load_samples()?;
-    if store::prune(&mut samples, store::MAX_SAMPLES) {
+    if store::prune(&mut samples, store::MAX_SAMPLES) && !dry_run {
         store.rewrite_samples(&samples)?;
     }
     let (salt, ensemble) = load_model(&store, &samples);
@@ -212,6 +216,7 @@ pub fn run(config: Config) -> Result<(), Error> {
         screen_active,
         last: None,
         session_corrections: 0,
+        dry_run,
     };
     for event in rx {
         core.handle(event);
@@ -222,6 +227,11 @@ pub fn run(config: Config) -> Result<(), Error> {
 impl Core {
     fn handle(&mut self, event: Event) {
         let now = unix_now();
+        match &event {
+            Event::Tick | Event::Command(_) => {}
+            Event::Network(n) => tracing::debug!("network changed (known: {})", n.is_some()),
+            other => tracing::debug!("{other:?}"),
+        }
         match event {
             Event::Tick => self.tick(now),
             Event::Backlight(level) => self.controller.observe_level(level, now),
@@ -274,10 +284,13 @@ impl Core {
         let offset = self.short_term.value(now, context.ambient.lux);
         let target = Prediction {
             mean: (breakdown.prediction.mean + offset).clamp(0.0, 1.0),
-            variance: breakdown.prediction.variance,
+            variance: breakdown.disagreement,
         };
         for action in self.controller.tick(now, target) {
             match action {
+                Action::Set(level) if self.dry_run => {
+                    tracing::info!("dry run: would set level {level}");
+                }
                 Action::Set(level) => {
                     if let Err(e) = self.writer.set(level) {
                         tracing::warn!("setting brightness to {level} failed: {e}");
@@ -302,17 +315,22 @@ impl Core {
 
     fn learn(&mut self, sample: Sample, context: &Context, predicted: f64) {
         let strong = !sample.is_weak();
-        if let Err(e) = self.store.append(&sample) {
+        if !self.dry_run
+            && let Err(e) = self.store.append(&sample)
+        {
             tracing::warn!("could not save sample: {e}");
         }
         self.samples.push(sample.clone());
         if store::prune(&mut self.samples, store::MAX_SAMPLES)
+            && !self.dry_run
             && let Err(e) = self.store.rewrite_samples(&self.samples)
         {
             tracing::warn!("could not compact samples: {e}");
         }
         self.ensemble.learn(&sample, &self.samples);
-        self.save_model();
+        if !self.dry_run {
+            self.save_model();
+        }
 
         if strong {
             self.session_corrections += 1;
@@ -354,6 +372,7 @@ impl Core {
                 self.controller.resume();
                 Response::ok(json!({ "mode": self.controller.mode().name() }))
             }
+            Request::Forget if self.dry_run => Response::error("forget is disabled in a dry run"),
             Request::Forget => match self.store.forget() {
                 Ok(()) => {
                     self.samples.clear();

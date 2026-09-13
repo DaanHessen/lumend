@@ -16,7 +16,10 @@ impl Coordinates {
     }
 }
 
-const ZONE_TABLE: &str = "/usr/share/zoneinfo/zone1970.tab";
+const ZONE_TABLES: [&str; 2] = [
+    "/usr/share/zoneinfo/zone1970.tab",
+    "/usr/share/zoneinfo/zone.tab",
+];
 
 pub fn resolve(latitude: Option<f64>, longitude: Option<f64>) -> Option<Coordinates> {
     if let (Some(latitude), Some(longitude)) = (latitude, longitude) {
@@ -26,8 +29,15 @@ pub fn resolve(latitude: Option<f64>, longitude: Option<f64>) -> Option<Coordina
         });
     }
     let zone = system_timezone()?;
-    let table = std::fs::read_to_string(ZONE_TABLE).ok()?;
-    lookup_zone(&table, &zone)
+    let tables: Vec<String> = ZONE_TABLES
+        .iter()
+        .filter_map(|path| std::fs::read_to_string(path).ok())
+        .collect();
+    lookup_in_tables(&tables, &zone)
+}
+
+pub fn lookup_in_tables(tables: &[String], zone: &str) -> Option<Coordinates> {
+    tables.iter().find_map(|table| lookup_zone(table, zone))
 }
 
 pub fn system_timezone() -> Option<String> {
@@ -120,6 +130,14 @@ AU\t-3352+15113\tAustralia/Sydney\tNew South Wales (most areas)\n";
     fn southern_hemisphere() {
         let c = lookup_zone(TABLE, "Australia/Sydney").unwrap();
         assert!(c.latitude < -33.0 && c.longitude > 151.0);
+    }
+
+    #[test]
+    fn falls_back_to_zone_tab_for_merged_zones() {
+        let zone1970 = "BE,LU,NL\t+5050+00420\tEurope/Brussels\n".to_owned();
+        let zone_tab = "NL\t+5222+00454\tEurope/Amsterdam\n".to_owned();
+        let c = lookup_in_tables(&[zone1970, zone_tab], "Europe/Amsterdam").unwrap();
+        assert!((c.latitude - 52.3667).abs() < 1e-3);
     }
 
     #[test]

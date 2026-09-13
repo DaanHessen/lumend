@@ -1,9 +1,9 @@
 use crate::solar::{self, SunPosition};
 
 const LUMINOUS_EFFICACY: f64 = 110.0;
-const ARTIFICIAL_FLOOR_LUX: f64 = 80.0;
+const ARTIFICIAL_FLOOR_LUX: f64 = 40.0;
 const UNKNOWN_CLEAR_SKY_INDEX: f64 = 0.6;
-const SATELLITE_MAX_AGE_S: f64 = 40.0 * 60.0;
+const SATELLITE_MAX_AGE_S: f64 = 60.0 * 60.0;
 const FORECAST_MAX_AGE_S: f64 = 90.0 * 60.0;
 
 #[derive(Debug, Clone, Copy, PartialEq)]

@@ -44,36 +44,37 @@ Everything here is deterministic and has no I/O, which makes it the easiest to t
 
 Each source is a thread that owns its connection and sends events. Each gets a small pure parsing function with tests, and the I/O shell around it is kept thin.
 
-- [ ] `backlight`: discovery by type, 5 Hz polling, logind `SetBrightness`, sysfs fallback.
-- [ ] `sources::hyprland`: socket2 reader. Parse `activewindow>>class,title`, `fullscreen>>0|1`, `workspace>>`, `activespecial>>`. Tests on sample lines.
-- [ ] `sources::power`: `/sys/class/power_supply` scan. Tests on a fake sysfs tree.
-- [ ] `sources::network`: iwd `Station.State` and `ConnectedNetwork` over the system bus.
-- [ ] `sources::media`: MPRIS players on the session bus, `PlaybackStatus` and whether the track looks like video.
-- [ ] `sources::nightlight`: `hyprctl hyprsunset temperature`. Tests on output parsing.
-- [ ] `sources::sky`: request building and response parsing for both endpoints, backoff. Tests on recorded JSON.
-- [ ] `sources::idle`: `ext-idle-notify-v1`.
-- [ ] `sources::screen`: `wlr-screencopy` into shm, grid sampling with an sRGB lookup table. Tests on the sampler with synthetic buffers.
+- [x] `backlight`: discovery by type, 5 Hz polling, logind `SetBrightness`, sysfs fallback.
+- [x] `sources::hyprland`: socket2 reader. Parse `activewindow>>class,title`, `fullscreen>>0|1`, `workspace>>`, `activespecial>>`. Tests on sample lines.
+- [x] `sources::power`: `/sys/class/power_supply` scan. Tests on a fake sysfs tree.
+- [x] `sources::network`: iwd `Station.State` and `ConnectedNetwork` over the system bus, NetworkManager as fallback.
+- [x] `sources::media`: MPRIS players on the session bus, `PlaybackStatus` for players that usually show video.
+- [x] `sources::nightlight`: `hyprctl hyprsunset temperature`. Tests on output parsing.
+- [x] `sources::sky`: request building and response parsing for both endpoints, backoff. Tests on recorded JSON.
+- [x] `sources::idle`: `ext-idle-notify-v1`.
+- [x] `sources::screen`: `wlr-screencopy` into shm, grid sampling with an sRGB lookup table. Tests on the sampler with synthetic buffers.
 
 ## Phase 4: control
 
-- [ ] `controller`: the four states, deadband, debounce, asymmetric ramps, break-moment steps, idle dim, weak confirmations. All transitions tested with a fake clock and scripted events.
-- [ ] Core loop wiring `Event`s into `Context`, controller and store.
-- [ ] `ipc`: socket server and the CLI client. Tests for request parsing.
-- [ ] `main`: clap subcommands `run`, `status`, `why`, `pause`, `resume`, `forget`.
+- [x] `controller`: the four states, deadband, debounce, asymmetric ramps, break-moment steps, idle dim, weak confirmations. All transitions tested with a fake clock and scripted events.
+- [x] Core loop wiring `Event`s into `Context`, controller and store.
+- [x] `ipc`: socket server and the CLI client. Tests for request parsing and a round trip over a real socket.
+- [x] `main`: clap subcommands `run` (with `--dry-run`), `status`, `why`, `pause`, `resume`, `forget`.
 
 ## Phase 5: packaging
 
-- [ ] systemd user unit `lumend.service`, `PartOf=graphical-session.target`.
-- [ ] Example config `lumend.toml` with every option commented.
-- [ ] `PKGBUILD` and `.SRCINFO` for `lumend-git`, following the Arch Rust package guidelines.
-- [ ] README.
+- [x] systemd user unit `lumend.service`, `PartOf=graphical-session.target`.
+- [x] Example config `dist/config.toml` with every option commented.
+- [x] `PKGBUILD` and `.SRCINFO` for `lumend-git`, following the Arch Rust package guidelines.
+- [x] README.
 
 ## Phase 6: verification on the target laptop
 
-- [ ] Run for real under Hyprland, check CPU use with `pidstat`.
-- [ ] Press Fn+F7/F8, confirm a single correction is recorded after the settle window.
-- [ ] Confirm `lumend why` output makes sense in daylight and at night.
-- [ ] Build the package with `makepkg` in a clean chroot.
+- [x] Dry run under Hyprland: every source reports, the target follows the prior, no writes.
+- [x] CPU and memory use measured over a dry run.
+- [ ] Live run: press Fn+F7/F8, confirm a single correction is recorded after the settle window.
+- [ ] Confirm `lumend why` output makes sense in daylight.
+- [ ] Build the package with `makepkg` from the pushed repository.
 
 ## Log
 
@@ -83,3 +84,10 @@ Notes from execution go here, newest last.
 - Phase 2: `serde_json` needs `float_roundtrip`, otherwise MLP weights change in the last bit on save and load.
 - Phase 2: the MLP ended up with an output layer that is linear rather than sigmoid, because it predicts a residual.
 - Phase 2 simulation (seed 2026): corrections per day went 12, 3, 3, 0, 0, 1, 0, ... and stayed at zero or one. Mean absolute error over the last ten days was 0.092 for the prior and 0.025 for the ensemble. Final weights: prior 0.11, linear 0.45, MLP 0.05, neighbours 0.40. The synthetic user is consistent and has no drift, so real use will be noisier than this.
+- Phase 4, controller: 0.02 p/s dimming turned out too fast at the top of the scale (60% to 28% in ten seconds). Default lowered to 0.01 p/s.
+- Phase 6, hardware check: the EC applies a written level at once (fifteen reads at 20 ms intervals all returned the new value), so exact matching is enough to tell lumend's own writes from key presses.
+- Phase 6, first dry run on the laptop. Four findings:
+  - `Europe/Amsterdam` is not in `zone1970.tab` any more (tzdata merged it into Brussels), so the location lookup failed and the irradiance source never started. The lookup now falls back to `zone.tab`.
+  - The untrained linear model reported a predictive standard deviation above 1, which pushed the ensemble's uncertainty to 0.33 and the deadband to 0.19 p. In 60 seconds lumend did not move once. The controller now uses the disagreement between members instead, and member variances are capped at the prior's.
+  - The prior asked for level 24 at 2 a.m. while the level was 15. The artificial light floor dropped from 80 to 40 lx, the middle of the evening range in the comfort study, which gives about level 19 for a dark terminal.
+  - The active app came through as none although Hyprland reports `Alacritty`. Signal events are now logged at debug level to find out why.

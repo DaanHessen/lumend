@@ -21,6 +21,7 @@ pub struct EnsembleState {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Breakdown {
     pub prediction: Prediction,
+    pub disagreement: f64,
     pub experts: [Prediction; 4],
     pub weights: [f64; 4],
 }
@@ -99,13 +100,22 @@ impl Ensemble {
             .zip(&self.weights)
             .map(|(e, w)| w * e.mean)
             .sum();
-        let variance = experts
+        let disagreement: f64 = experts
             .iter()
             .zip(&self.weights)
-            .map(|(e, w)| w * (e.variance + (e.mean - mean).powi(2)))
+            .map(|(e, w)| w * (e.mean - mean).powi(2))
+            .sum();
+        let own: f64 = experts
+            .iter()
+            .zip(&self.weights)
+            .map(|(e, w)| w * e.variance.min(prior::VARIANCE))
             .sum();
         Breakdown {
-            prediction: Prediction { mean, variance },
+            prediction: Prediction {
+                mean,
+                variance: disagreement + own,
+            },
+            disagreement,
             experts,
             weights: self.weights,
         }

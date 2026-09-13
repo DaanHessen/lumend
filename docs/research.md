@@ -71,7 +71,7 @@ The sun's position is computable offline. For clear-sky GHI the Haurwitz model i
 
 The first plan was weather forecast cloud cover. It turned out to be the weaker option.
 
-Open-Meteo runs a [satellite radiation API](https://open-meteo.com/en/docs/satellite-radiation-api) built on geostationary imagery. For Europe and Africa it uses Meteosat Third Generation data processed by DWD at 0.025° (about 2.5 km), every 10 minutes, with a stated delay of around 20 minutes. Himawari-9 covers Asia and Oceania at 10-minute steps. North America has no satellite source there yet. A test request returned 288 ten-minute values for the previous two days, as documented.
+Open-Meteo runs a [satellite radiation API](https://open-meteo.com/en/docs/satellite-radiation-api) built on geostationary imagery. For Europe and Africa it uses Meteosat Third Generation data processed by DWD at 0.025° (about 2.5 km), every 10 minutes, with a stated delay of around 20 minutes. Himawari-9 covers Asia and Oceania at 10-minute steps. North America has no satellite source there yet. A test request returned 288 ten-minute values for the previous two days, as documented. In three requests on the target laptop the newest value was 14, 14 and 42 minutes old, so the daemon accepts satellite values up to an hour old and bridges the gap with the forecast.
 
 Satellite values are measurements, not forecasts, but they lag. The regular forecast API fills the gap with `minutely_15=shortwave_radiation_instant`, which comes from ICON-D2 and AROME in central Europe and HRRR in North America.
 
