@@ -1,0 +1,60 @@
+# lumend configuration
+#
+# Copy to ~/.config/lumend/config.toml. Every setting is optional; the values
+# shown are the defaults. Restart the service after editing:
+#   systemctl --user restart lumend
+
+[backlight]
+# Backlight device under /sys/class/backlight. Picked automatically when unset,
+# preferring firmware over platform over raw devices.
+# device = "nvidia_wmi_ec_backlight"
+# How often to read the backlight, to notice your own Fn-key changes.
+# poll_hz = 5.0
+# Lowest level lumend will ever set.
+# min_level = 1
+
+[location]
+# Used for the sun position and the irradiance request. When unset, lumend
+# uses the coordinates of your timezone from /usr/share/zoneinfo/zone1970.tab.
+# latitude = 52.37
+# longitude = 4.89
+
+[sky]
+# Fetch measured sunlight (satellite) and a short-range forecast from
+# open-meteo.com. Sends latitude and longitude rounded to 0.1 degrees,
+# nothing else. Set to false to keep lumend fully offline.
+# enabled = true
+# interval_minutes = 10
+# Fraction of outdoor daylight that reaches your desk. 0.02 suits a desk a few
+# metres from a window; the learned models correct for it over time.
+# daylight_factor = 0.02
+
+[screen]
+# Sample the screen's brightness every few seconds. Frames stay in memory and
+# are reduced to two numbers; nothing is written to disk.
+# enabled = true
+# interval_seconds = 3.0
+
+[learning]
+# How long the level must stay unchanged after you press the brightness keys
+# before lumend records it as a correction.
+# settle_seconds = 30.0
+# Every 20 minutes without a correction, record the current level as a
+# low-weight "this was fine" sample.
+# weak_confirmations = true
+
+[transitions]
+# Speeds are in perceptual units per second (the full range is 1.0).
+# brighten_rate = 0.15
+# dim_rate = 0.01
+# How long a new target must persist before lumend starts moving.
+# brighten_delay_seconds = 4.0
+# dim_delay_seconds = 8.0
+# Largest instant step when you switch workspace or window.
+# break_step = 0.15
+
+[idle]
+# Dim a little when you step away, restore at once when you return.
+# enabled = true
+# dim_after_seconds = 90
+# dim_by = 0.2

@@ -120,7 +120,7 @@ The controller runs on every tick (1 Hz) and on relevant events.
 
 States: `Auto`, `UserAdjusting`, `Held`, `Paused`.
 
-- **Auto.** Compute target `p*`. Move toward it only when `|p* - p_now|` exceeds a deadband of `0.03 + 0.5 * sqrt(variance)`, so an uncertain model moves less. A brightening target must hold for 4 s, a dimming target for 8 s. Ramps run at 0.15 p/s up and 0.02 p/s down. At a break moment (workspace or window change, idle resume, unlock) the controller may step up to 0.15 p at once.
+- **Auto.** Compute target `p*`. Move toward it only when `|p* - p_now|` exceeds a deadband of `0.03 + 0.5 * sqrt(variance)`, so an uncertain model moves less. A brightening target must hold for 4 s, a dimming target for 8 s. Ramps run at 0.15 p/s up and 0.01 p/s down. On the perceptual scale 0.01 p/s changes luminance by about 3.5% per second, slow enough that a 0.2 p dim takes 20 seconds. At a break moment (workspace or window change, idle resume, unlock) the controller may step up to 0.15 p at once.
 - **UserAdjusting.** Entered when the polled level differs from the last level lumend wrote by more than one step. Auto adjustment stops. Every further change restarts the settle timer. When the level has stayed put for `settle_seconds` (30 by default), the controller emits a correction with the features captured at the end of the settle window and moves to `Held`.
 - **Held.** Keeps the user's level for at least 3 minutes and until the short-term offset has decayed to less than the deadband, unless estimated lux changes by a factor of three.
 - **Paused.** Set over the CLI. No writes, no learning.

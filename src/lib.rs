@@ -1,10 +1,16 @@
 pub mod ambient;
+pub mod backlight;
 pub mod config;
 pub mod context;
+pub mod controller;
+pub mod daemon;
+pub mod events;
 pub mod features;
+pub mod ipc;
 pub mod location;
 pub mod model;
 pub mod paths;
 pub mod perceptual;
 pub mod solar;
+pub mod sources;
 pub mod store;

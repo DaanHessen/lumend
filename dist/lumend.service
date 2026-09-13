@@ -1,0 +1,19 @@
+[Unit]
+Description=Adaptive screen brightness
+Documentation=https://github.com/DaanHessen/lumend
+PartOf=graphical-session.target
+After=graphical-session.target
+Requisite=graphical-session.target
+
+[Service]
+ExecStart=/usr/bin/lumend run
+Restart=on-failure
+RestartSec=5
+Nice=5
+NoNewPrivileges=yes
+LockPersonality=yes
+RestrictRealtime=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=graphical-session.target

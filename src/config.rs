@@ -110,7 +110,7 @@ impl Default for TransitionConfig {
     fn default() -> Self {
         Self {
             brighten_rate: 0.15,
-            dim_rate: 0.02,
+            dim_rate: 0.01,
             brighten_delay_seconds: 4.0,
             dim_delay_seconds: 8.0,
             break_step: 0.15,
