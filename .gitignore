@@ -1,0 +1,4 @@
+/target
+/pkg
+/src/lumend-*
+*.pkg.tar.zst
