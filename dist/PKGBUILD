@@ -16,6 +16,7 @@ optdepends=(
   'iwd: network signal'
   'networkmanager: network signal'
 )
+options=('!lto')
 provides=("$_pkgname")
 conflicts=("$_pkgname")
 backup=()

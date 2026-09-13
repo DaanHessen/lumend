@@ -72,7 +72,7 @@ Each source is a thread that owns its connection and sends events. Each gets a s
 
 - [x] Dry run under Hyprland: every source reports, the target follows the prior, no writes.
 - [x] CPU and memory use measured over a dry run.
-- [ ] Live run: press Fn+F7/F8, confirm a single correction is recorded after the settle window.
+- [x] Live run: press Fn+F7/F8, confirm a single correction is recorded after the settle window.
 - [ ] Confirm `lumend why` output makes sense in daylight.
 - [ ] Build the package with `makepkg` from the pushed repository.
 
@@ -94,3 +94,5 @@ Notes from execution go here, newest last.
 - Phase 6, second dry run: location, irradiance, window, fullscreen, power, network, media, night light and screen signals all arrived, and the app was reported correctly. The missing app in the first run did not come back and the cause is unknown, most likely a startup race. The target moved from level 15 to 19 as expected. The newest satellite value was 42 minutes old, so the freshness limit went from 40 to 60 minutes.
 - Phase 6, resource use over a 30 second dry run with screen sampling every 3 seconds: 0.03 s user and 0.07 s system CPU (about 0.3% of one core), 21 MB resident, 17 threads, most of them zbus's internal executor.
 - Simulations (seed 2026): with a steady user, corrections per day went 13, 4, 2, 1, 3 and then mostly zero, with a last-ten-day error of 0.023 against the prior's 0.102. Four other seeds pass the same checks. When the simulated user switches to 0.12 dimmer on day 20, corrections jump to 27 and 19, drop to 4, 1, 3, and are back at zero from day 25.
+- Phase 6, live run: lumend raised the backlight from 14 to 17 in small steps and recognised every one of its own writes. Pressing the keys (17, 12, 7, 12) produced exactly one correction 30 seconds after the last press: "you chose level 12, lumend expected 18 and now predicts 17". The controller then held level 12. A first correction does not change the ensemble weights, because all four experts made the same prediction before it; the short-term offset carries the user's level until a second correction in a similar situation lets the learned experts win weight.
+- Phase 5, packaging: the first `makepkg` build failed at link time with undefined `ring_core_*` symbols. makepkg's C LTO flags don't mix with `ring`'s C objects, as the Arch Rust guidelines warn. `options=('!lto')` fixes it; Rust's own LTO from `Cargo.toml` still applies.

@@ -16,6 +16,7 @@ pkgbase = lumend-git
 	optdepends = networkmanager: network signal
 	provides = lumend
 	conflicts = lumend
+	options = !lto
 	source = lumend::git+https://github.com/DaanHessen/lumend.git
 	sha256sums = SKIP
 
