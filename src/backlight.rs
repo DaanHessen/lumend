@@ -48,7 +48,7 @@ pub fn discover(root: &Path, wanted: Option<&str>) -> io::Result<Device> {
             candidates.push((rank, std::cmp::Reverse(max), Device { name, path, max }));
         }
     }
-    candidates.sort_by(|a, b| (a.0, a.1).cmp(&(b.0, b.1)));
+    candidates.sort_by_key(|c| (c.0, c.1));
     candidates
         .into_iter()
         .next()

@@ -79,7 +79,8 @@ pub fn sample(
     let (mut sum, mut bright, mut count) = (0.0, 0usize, 0usize);
     for y in (GRID_STEP / 2..height).step_by(GRID_STEP) {
         let row = &pixels[y * stride..y * stride + width * 4];
-        for px in row.chunks_exact(4).skip(GRID_STEP / 2).step_by(GRID_STEP) {
+        for x in (GRID_STEP / 2..width).step_by(GRID_STEP) {
+            let px = &row[x * 4..x * 4 + 4];
             let luma = 0.2126 * table[px[r] as usize]
                 + 0.7152 * table[px[1] as usize]
                 + 0.0722 * table[px[b] as usize];

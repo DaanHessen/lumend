@@ -44,9 +44,9 @@ jobs:
       - name: makepkg from this commit
         run: |
           useradd -m builder
-          cp -r "$GITHUB_WORKSPACE" /home/builder/lumend
+          cp -r "$GITHUB_WORKSPACE" /home/builder/repo
           cp dist/PKGBUILD /home/builder/
-          sed -i 's|git+$url.git|git+file:///home/builder/lumend|' /home/builder/PKGBUILD
+          sed -i 's|git+$url.git|git+file:///home/builder/repo|' /home/builder/PKGBUILD
           chown -R builder /home/builder
           su builder -c 'cd /home/builder && git config --global --add safe.directory "*" && makepkg --noconfirm'
       - run: ls -l /home/builder/*.pkg.tar.zst
