@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    name: fmt, clippy, test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets --locked -- -D warnings
+      - run: cargo test --locked
+
+  msrv:
+    name: minimum Rust version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.90
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --locked
+
+  arch:
+    name: Arch package
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - run: pacman -Syu --noconfirm --needed git rust
+      - uses: actions/checkout@v4
+      - name: makepkg from this commit
+        run: |
+          useradd -m builder
+          cp -r "$GITHUB_WORKSPACE" /home/builder/lumend
+          cp dist/PKGBUILD /home/builder/
+          sed -i 's|git+$url.git|git+file:///home/builder/lumend|' /home/builder/PKGBUILD
+          chown -R builder /home/builder
+          su builder -c 'cd /home/builder && git config --global --add safe.directory "*" && makepkg --noconfirm'
+      - run: ls -l /home/builder/*.pkg.tar.zst

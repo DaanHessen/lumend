@@ -73,6 +73,8 @@ Each source is a thread that owns its connection and sends events. Each gets a s
 - [x] Dry run under Hyprland: every source reports, the target follows the prior, no writes.
 - [x] CPU and memory use measured over a dry run.
 - [x] Live run: press Fn+F7/F8, confirm a single correction is recorded after the settle window.
+- [x] Toggle: pressing both brightness keys together pauses and resumes, verified through the daemon.
+- [x] Installed to `~/.local/bin` with a user service, enabled at login.
 - [ ] Confirm `lumend why` output makes sense in daylight.
 - [ ] Build the package with `makepkg` from the pushed repository.
 
@@ -95,4 +97,5 @@ Notes from execution go here, newest last.
 - Phase 6, resource use over a 30 second dry run with screen sampling every 3 seconds: 0.03 s user and 0.07 s system CPU (about 0.3% of one core), 21 MB resident, 17 threads, most of them zbus's internal executor.
 - Simulations (seed 2026): with a steady user, corrections per day went 13, 4, 2, 1, 3 and then mostly zero, with a last-ten-day error of 0.023 against the prior's 0.102. Four other seeds pass the same checks. When the simulated user switches to 0.12 dimmer on day 20, corrections jump to 27 and 19, drop to 4, 1, 3, and are back at zero from day 25.
 - Phase 6, live run: lumend raised the backlight from 14 to 17 in small steps and recognised every one of its own writes. Pressing the keys (17, 12, 7, 12) produced exactly one correction 30 seconds after the last press: "you chose level 12, lumend expected 18 and now predicts 17". The controller then held level 12. A first correction does not change the ensemble weights, because all four experts made the same prediction before it; the short-term offset carries the user's level until a second correction in a similar situation lets the learned experts win weight.
+- Phase 7, always on and the off switch: installed to `~/.local/bin/lumend` with a user unit, enabled through `graphical-session.target`. Three problems turned up while doing it. An indefinite pause was forgotten on restart, and is now a `paused` file in the state directory. Screen capture gave up permanently after five failures and could block forever waiting on the compositor; it now polls with a two-second timeout and reconnects with backoff. `lumend status | head` panicked with a broken pipe, and printing now exits quietly instead. The chord binding redefines the compositor brightness keys rather than adding a second binding, so each press still runs exactly one action.
 - Phase 5, packaging: the first `makepkg` build failed at link time with undefined `ring_core_*` symbols. makepkg's C LTO flags don't mix with `ring`'s C objects, as the Arch Rust guidelines warn. `options=('!lto')` fixes it; Rust's own LTO from `Cargo.toml` still applies.

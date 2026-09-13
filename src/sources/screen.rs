@@ -1,5 +1,7 @@
+use super::Backoff;
 use crate::context::ScreenStats;
 use crate::events::Event;
+use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use rustix::fs::{MemfdFlags, ftruncate, memfd_create};
 use rustix::mm::{MapFlags, ProtFlags, mmap, munmap};
 use std::os::fd::{AsFd, OwnedFd};
@@ -23,6 +25,8 @@ use wayland_protocols_wlr::screencopy::v1::client::{
 
 const GRID_STEP: usize = 8;
 const BRIGHT_THRESHOLD: f64 = 0.6;
+const FRAME_TIMEOUT: Duration = Duration::from_secs(2);
+const FAILURES_BEFORE_RECONNECT: u32 = 3;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PixelOrder {
@@ -313,6 +317,32 @@ impl Capturer {
         Ok(())
     }
 
+    /// Waits for compositor events with a timeout. `blocking_dispatch` would
+    /// wait forever if the output goes away mid-frame, which leaves the whole
+    /// signal dead until the daemon restarts.
+    fn dispatch(&mut self) -> Result<(), Error> {
+        self.queue.flush()?;
+        if self.queue.dispatch_pending(&mut self.state)? > 0 {
+            return Ok(());
+        }
+        let Some(guard) = self.queue.prepare_read() else {
+            self.queue.dispatch_pending(&mut self.state)?;
+            return Ok(());
+        };
+        let fd = guard.connection_fd();
+        let mut fds = [PollFd::new(&fd, PollFlags::IN)];
+        let timeout = Timespec {
+            tv_sec: FRAME_TIMEOUT.as_secs() as i64,
+            tv_nsec: i64::from(FRAME_TIMEOUT.subsec_nanos()),
+        };
+        if poll(&mut fds, Some(&timeout))? == 0 {
+            return Err("the compositor did not answer in time".into());
+        }
+        guard.read()?;
+        self.queue.dispatch_pending(&mut self.state)?;
+        Ok(())
+    }
+
     fn capture(&mut self) -> Result<Option<ScreenStats>, Error> {
         let output = self.internal_output().ok_or("no outputs")?.clone();
         self.state.frame = Frame::default();
@@ -322,22 +352,23 @@ impl Capturer {
             || (self.state.frame.buffer.is_some()
                 && (self.state.frame.buffer_done || !wait_for_done)))
         {
-            self.queue.blocking_dispatch(&mut self.state)?;
+            self.dispatch()?;
         }
         let Some(info) = self.state.frame.buffer.filter(|_| !self.state.frame.failed) else {
             frame.destroy();
             return Ok(None);
         };
         self.ensure_buffer(info)?;
-        let shm = self.buffer.as_ref().ok_or("buffer missing")?;
-        frame.copy(&shm.buffer);
+        let buffer = self.buffer.as_ref().ok_or("buffer missing")?.buffer.clone();
+        frame.copy(&buffer);
         while !(self.state.frame.ready || self.state.frame.failed) {
-            self.queue.blocking_dispatch(&mut self.state)?;
+            self.dispatch()?;
         }
         frame.destroy();
         if self.state.frame.failed {
             return Ok(None);
         }
+        let shm = self.buffer.as_ref().ok_or("buffer missing")?;
         Ok(sample(
             shm.mapping.bytes(),
             info.width as usize,
@@ -349,13 +380,33 @@ impl Capturer {
 }
 
 pub fn run(interval: Duration, active: Arc<AtomicBool>, tx: Sender<Event>) {
-    let mut capturer = match Capturer::connect() {
-        Ok(c) => c,
-        Err(e) => {
-            tracing::warn!("screen capture unavailable ({e}), screen content signal disabled");
+    let mut backoff = Backoff::new(Duration::from_secs(5), Duration::from_secs(60));
+    loop {
+        match Capturer::connect() {
+            Ok(mut capturer) => {
+                backoff.reset();
+                if !capture_frames(&mut capturer, interval, &active, &tx) {
+                    return;
+                }
+                tracing::warn!("screen capture stopped, reconnecting");
+            }
+            Err(e) => tracing::warn!("screen capture unavailable: {e}"),
+        }
+        if tx.send(Event::Screen(None)).is_err() {
             return;
         }
-    };
+        std::thread::sleep(backoff.next_delay());
+    }
+}
+
+/// Captures until the compositor stops cooperating. Returns false only when
+/// the daemon itself has gone away, which is the one reason to stop for good.
+fn capture_frames(
+    capturer: &mut Capturer,
+    interval: Duration,
+    active: &AtomicBool,
+    tx: &Sender<Event>,
+) -> bool {
     let mut failures = 0u32;
     loop {
         if active.load(Ordering::Relaxed) {
@@ -363,16 +414,14 @@ pub fn run(interval: Duration, active: Arc<AtomicBool>, tx: Sender<Event>) {
                 Ok(stats) => {
                     failures = 0;
                     if tx.send(Event::Screen(stats)).is_err() {
-                        return;
+                        return false;
                     }
                 }
                 Err(e) => {
                     failures += 1;
                     tracing::warn!("screen capture failed: {e}");
-                    if failures >= 5 {
-                        tracing::warn!("giving up on screen capture after repeated failures");
-                        let _ = tx.send(Event::Screen(None));
-                        return;
+                    if failures >= FAILURES_BEFORE_RECONNECT {
+                        return true;
                     }
                 }
             }

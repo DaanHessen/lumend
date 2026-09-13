@@ -45,6 +45,26 @@ enum Cmd {
         #[arg(long)]
         yes: bool,
     },
+    /// Report a brightness key press; bind to both brightness keys so pressing them together toggles lumend
+    #[command(hide = true)]
+    Key { key: KeyArg },
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+enum KeyArg {
+    Up,
+    Down,
+}
+
+/// Printing through a pipe that is closed early (`lumend status | head`) makes
+/// the default `println!` panic; quietly stop instead.
+macro_rules! say {
+    ($($arg:tt)*) => {{
+        use std::io::Write;
+        if writeln!(std::io::stdout(), $($arg)*).is_err() {
+            std::process::exit(0);
+        }
+    }};
 }
 
 fn main() -> ExitCode {
@@ -54,16 +74,24 @@ fn main() -> ExitCode {
         Cmd::Status { json } => query(Request::Status, json, print_status),
         Cmd::Why { json } => query(Request::Why, json, print_why),
         Cmd::Pause { minutes } => query(Request::Pause { minutes }, false, |_| match minutes {
-            Some(m) => println!("paused for {m} minutes"),
-            None => println!("paused until `lumend resume`"),
+            Some(m) => say!("paused for {m} minutes"),
+            None => say!("paused until `lumend resume`"),
         }),
-        Cmd::Resume => query(Request::Resume, false, |_| println!("resumed")),
+        Cmd::Resume => query(Request::Resume, false, |_| say!("resumed")),
         Cmd::Forget { yes: false } => {
             Err("this deletes every learned sample; run `lumend forget --yes` to confirm".into())
         }
-        Cmd::Forget { yes: true } => query(Request::Forget, false, |_| {
-            println!("all learned data deleted")
-        }),
+        Cmd::Forget { yes: true } => {
+            query(Request::Forget, false, |_| say!("all learned data deleted"))
+        }
+        Cmd::Key { key } => {
+            let key = match key {
+                KeyArg::Up => lumend::chord::Key::Up,
+                KeyArg::Down => lumend::chord::Key::Down,
+            };
+            let _ = ipc::request(&paths::socket_path(), &Request::Key { key });
+            Ok(())
+        }
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -110,7 +138,7 @@ fn query(
             .into());
     }
     if raw {
-        println!("{}", serde_json::to_string_pretty(&response.data)?);
+        say!("{}", serde_json::to_string_pretty(&response.data)?);
     } else {
         print(&response.data);
     }
@@ -123,50 +151,52 @@ fn num(v: &Value, digits: usize) -> String {
 }
 
 fn print_status(d: &Value) {
-    println!("mode        {}", d["mode"].as_str().unwrap_or("?"));
-    println!("device      {}", d["device"].as_str().unwrap_or("?"));
-    println!("level       {} of {}", d["level"], d["max_level"]);
+    say!("mode        {}", d["mode"].as_str().unwrap_or("?"));
+    say!("device      {}", d["device"].as_str().unwrap_or("?"));
+    say!("level       {} of {}", d["level"], d["max_level"]);
     if !d["target_level"].is_null() {
-        println!(
+        say!(
             "target      {} (models disagree by ±{} p)",
             d["target_level"],
             num(&d["uncertainty"], 3)
         );
     }
-    println!(
+    say!(
         "learned     {} corrections total, {} this session, {} stored samples",
-        d["corrections_total"], d["corrections_this_session"], d["samples"]
+        d["corrections_total"],
+        d["corrections_this_session"],
+        d["samples"]
     );
     if let Some(weights) = d["weights"].as_object() {
         let parts: Vec<String> = weights
             .iter()
             .map(|(k, v)| format!("{k} {:.0}%", v.as_f64().unwrap_or(0.0) * 100.0))
             .collect();
-        println!("weights     {}", parts.join(", "));
+        say!("weights     {}", parts.join(", "));
     }
 }
 
 fn print_why(d: &Value) {
     if d["ready"] != Value::Bool(true) {
-        println!("no prediction yet, try again in a second");
+        say!("no prediction yet, try again in a second");
         return;
     }
     let s = &d["signals"];
-    println!("target level {}", d["target_level"]);
-    println!();
-    println!(
+    say!("target level {}", d["target_level"]);
+    say!();
+    say!(
         "room light   ~{} lx ({})",
         num(&s["room_lux"], 0),
         s["irradiance_source"].as_str().unwrap_or("?")
     );
-    println!(
+    say!(
         "sky          {} W/m² of {} clear-sky, sun at {}°",
         num(&s["ghi"], 0),
         num(&s["clear_sky_ghi"], 0),
         num(&s["sun_elevation"], 1)
     );
-    println!("screen luma  {}", num(&s["screen_luma"], 2));
-    println!(
+    say!("screen luma  {}", num(&s["screen_luma"], 2));
+    say!(
         "app          {}{}{}",
         s["app"].as_str().unwrap_or("none"),
         if s["fullscreen"] == Value::Bool(true) {
@@ -181,12 +211,12 @@ fn print_why(d: &Value) {
         }
     );
     if !s["night_light_kelvin"].is_null() {
-        println!("night light  {} K", s["night_light_kelvin"]);
+        say!("night light  {} K", s["night_light_kelvin"]);
     }
-    println!();
+    say!();
     if let Some(experts) = d["experts"].as_array() {
         for e in experts {
-            println!(
+            say!(
                 "{:<10} level {:>4}  weight {:>3.0}%",
                 e["name"].as_str().unwrap_or("?"),
                 e["level"],
@@ -196,13 +226,13 @@ fn print_why(d: &Value) {
     }
     let offset = d["short_term_offset"].as_f64().unwrap_or(0.0);
     if offset.abs() > 0.005 {
-        println!("recent correction still shifts the target by {offset:+.3} p");
+        say!("recent correction still shifts the target by {offset:+.3} p");
     }
     if let Some(drivers) = d["drivers"].as_array().filter(|a| !a.is_empty()) {
-        println!();
-        println!("what the linear model learned matters here:");
+        say!();
+        say!("what the linear model learned matters here:");
         for dr in drivers {
-            println!(
+            say!(
                 "  {:<22} {:+.3} p",
                 dr["feature"].as_str().unwrap_or("?"),
                 dr["shift"].as_f64().unwrap_or(0.0)

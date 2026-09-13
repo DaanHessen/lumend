@@ -1,5 +1,6 @@
 use crate::ambient::{self, Sky};
 use crate::backlight::{self, Writer};
+use crate::chord::ChordDetector;
 use crate::config::Config;
 use crate::context::{Context, Power, ScreenStats};
 use crate::controller::{Action, Controller, Mode, Settings};
@@ -26,6 +27,7 @@ const TICK: Duration = Duration::from_millis(250);
 const SCREEN_STALE_SECONDS: f64 = 20.0;
 const WEAK_WEIGHT: f64 = 0.2;
 const MODEL_VERSION: u32 = 1;
+const CHORD_SETTLE_SECONDS: f64 = 2.0;
 
 type Error = Box<dyn std::error::Error>;
 
@@ -72,6 +74,7 @@ struct Core {
     last: Option<Snapshot>,
     session_corrections: u32,
     dry_run: bool,
+    chord: ChordDetector,
 }
 
 fn unix_now() -> f64 {
@@ -94,6 +97,15 @@ fn fresh_salt() -> u64 {
         return unix_now().to_bits() ^ u64::from(std::process::id());
     }
     u64::from_le_bytes(bytes)
+}
+
+fn notify(message: &str) {
+    let spawned = std::process::Command::new("notify-send")
+        .args(["--app-name=lumend", "--expire-time=2000", message])
+        .spawn();
+    if let Ok(mut child) = spawned {
+        std::thread::spawn(move || child.wait());
+    }
 }
 
 fn approximate_sun(local_seconds: f64) -> SunPosition {
@@ -217,7 +229,12 @@ pub fn run(config: Config, dry_run: bool) -> Result<(), Error> {
         last: None,
         session_corrections: 0,
         dry_run,
+        chord: ChordDetector::default(),
     };
+    if core.store.paused() {
+        tracing::info!("starting paused; press Fn+F7 and Fn+F8 together or run `lumend resume`");
+        core.controller.pause(None);
+    }
     for event in rx {
         core.handle(event);
     }
@@ -366,10 +383,12 @@ impl Core {
             Request::Pause { minutes } => {
                 let until = minutes.map(|m| now + m as f64 * 60.0);
                 self.controller.pause(until);
+                self.remember_paused(until.is_none());
                 Response::ok(json!({ "paused_until": until }))
             }
             Request::Resume => {
                 self.controller.resume();
+                self.remember_paused(false);
                 Response::ok(json!({ "mode": self.controller.mode().name() }))
             }
             Request::Forget if self.dry_run => Response::error("forget is disabled in a dry run"),
@@ -384,8 +403,42 @@ impl Core {
                 }
                 Err(e) => Response::error(format!("could not delete stored data: {e}")),
             },
+            Request::Key { key } => {
+                if self.chord.press(key, now) {
+                    self.toggle_pause(now);
+                }
+                Response::ok(json!({ "mode": self.controller.mode().name() }))
+            }
         };
         let _ = command.reply.send(response);
+    }
+
+    fn remember_paused(&self, paused: bool) {
+        if self.dry_run {
+            return;
+        }
+        if let Err(e) = self.store.set_paused(paused) {
+            tracing::warn!("could not save the paused state: {e}");
+        }
+    }
+
+    fn toggle_pause(&mut self, now: f64) {
+        let resuming = matches!(self.controller.mode(), Mode::Paused { .. });
+        if resuming {
+            self.controller.resume();
+        } else {
+            self.controller.pause(None);
+        }
+        self.remember_paused(!resuming);
+        self.controller
+            .ignore_level_changes_until(now + CHORD_SETTLE_SECONDS);
+        let message = if resuming {
+            "Adaptive brightness on"
+        } else {
+            "Adaptive brightness paused"
+        };
+        tracing::info!("{message} (Fn+F7+F8)");
+        notify(message);
     }
 
     fn status(&self) -> serde_json::Value {

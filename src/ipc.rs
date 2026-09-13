@@ -17,6 +17,7 @@ pub enum Request {
     Pause { minutes: Option<u64> },
     Resume,
     Forget,
+    Key { key: crate::chord::Key },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -73,12 +73,32 @@ exec-once = dbus-update-activation-environment --systemd WAYLAND_DISPLAY HYPRLAN
 
 ## Use
 
+Press Fn+F7 and Fn+F8 together to switch lumend off, and together again to switch it back on. Both keys have to go down within about 100 ms of each other, so pressing one after the other never triggers it. A notification says which way it went, and the setting survives a reboot.
+
+For that to work, both brightness keys have to tell lumend about the press. On Omarchy, add this to `~/.config/hypr/bindings.conf`:
+
+```
+unbind = , XF86MonBrightnessUp
+unbind = , XF86MonBrightnessDown
+bindeld = , XF86MonBrightnessUp, Brightness up, exec, ~/.local/bin/lumend key up & omarchy-brightness-display +5%
+bindeld = , XF86MonBrightnessDown, Brightness down, exec, ~/.local/bin/lumend key down & omarchy-brightness-display 5%-
+```
+
+Replace `omarchy-brightness-display +5%` with whatever your setup already runs for those keys, such as `brightnessctl set +5%`. Redefining the binding instead of adding a second one keeps exactly one action per key press.
+
 ```sh
 lumend status      # mode, current and target level, what it has learned
 lumend why         # the signals and predictions behind the current target
 lumend pause 30    # leave the brightness alone for 30 minutes
+lumend pause       # ... or until you resume, remembered across reboots
 lumend resume
 lumend forget --yes
+```
+
+To stop it completely:
+
+```sh
+systemctl --user disable --now lumend
 ```
 
 To see what lumend would do without letting it touch anything, stop the service and run `lumend run --dry-run`. It logs every change it would make and saves nothing.

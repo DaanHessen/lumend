@@ -10,6 +10,7 @@ pub const MAX_SAMPLES: usize = 5000;
 pub const MAX_WEAK_SHARE: f64 = 0.3;
 const SAMPLES_FILE: &str = "samples.jsonl";
 const STATE_FILE: &str = "model.json";
+const PAUSED_FILE: &str = "paused";
 
 #[derive(Debug, Clone)]
 pub struct Store {
@@ -102,6 +103,25 @@ impl Store {
     pub fn save_state<T: Serialize>(&self, state: &T) -> io::Result<()> {
         let text = serde_json::to_vec(state).map_err(io::Error::other)?;
         write_atomic(&self.state_path(), &text)
+    }
+
+    fn paused_path(&self) -> PathBuf {
+        self.dir.join(PAUSED_FILE)
+    }
+
+    /// Whether the user switched lumend off, remembered across restarts.
+    pub fn paused(&self) -> bool {
+        self.paused_path().exists()
+    }
+
+    pub fn set_paused(&self, paused: bool) -> io::Result<()> {
+        if paused {
+            return write_atomic(&self.paused_path(), b"");
+        }
+        match fs::remove_file(self.paused_path()) {
+            Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e),
+            _ => Ok(()),
+        }
     }
 
     pub fn forget(&self) -> io::Result<()> {
@@ -210,6 +230,18 @@ mod tests {
         store.forget().unwrap();
         assert!(store.load_samples().unwrap().is_empty());
         assert!(store.load_state::<u8>().is_none());
+    }
+
+    #[test]
+    fn paused_flag_survives_and_clears() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        assert!(!store.paused());
+        store.set_paused(true).unwrap();
+        assert!(Store::open(dir.path()).unwrap().paused());
+        store.set_paused(false).unwrap();
+        store.set_paused(false).unwrap();
+        assert!(!store.paused());
     }
 
     #[test]

@@ -129,13 +129,21 @@ Idle handling: after `idle_dim_seconds` (90) without input, the controller ramps
 
 Weak confirmations: if 20 minutes pass in `Auto` with the user active and no correction, the current state is stored as a sample with weight 0.2. Weak samples are capped at 30% of the store and are the first to be dropped.
 
+## Switching it off
+
+Pressing both brightness keys together pauses and resumes lumend. Presses reach the daemon through the compositor binding, which runs `lumend key up` or `lumend key down`. lumend never reads input devices and never sees any other key.
+
+`chord::ChordDetector` accepts a chord when the other key was pressed at most 120 ms earlier, nothing else was pressed in the 400 ms before that, and no chord fired in the last second. Sequential presses and quick runs of presses are rejected. After a toggle the controller ignores backlight changes for two seconds, so the two brightness steps the keys themselves caused are not learned as a correction.
+
+An indefinite pause, whether from the chord or `lumend pause`, is stored as a `paused` file in the state directory and restored at startup. A timed pause is not.
+
 ## Backlight
 
 `backlight` picks a device from config or by type preference (`firmware`, then `platform`, then `raw`). It reads `actual_brightness` at 5 Hz on its own thread and sends a `Backlight(level)` event only on change. Writes go through `org.freedesktop.login1.Session.SetBrightness` on the caller's session. If logind refuses, it falls back to writing sysfs directly when that file is writable.
 
 ## Screen sampling
 
-A dedicated Wayland connection binds `zwlr_screencopy_manager_v1` and captures the focused output every 3 seconds into a shared-memory buffer. The sampler walks a grid of every 8th pixel, converts sRGB to linear light with a lookup table and reports mean luma and the bright fraction. Nothing is written to disk and the buffer is reused. Capture pauses while idle.
+A dedicated Wayland connection binds `zwlr_screencopy_manager_v1` and captures the internal output every 3 seconds into a shared-memory buffer. Waiting for compositor events uses a two-second timeout rather than a blocking dispatch, because an output that disappears mid-frame would otherwise hang the thread forever. After three failures in a row the connection is rebuilt, with backoff from 5 to 60 seconds, so a screen switching off or a monitor change never kills the signal for good. The sampler walks a grid of every 8th pixel, converts sRGB to linear light with a lookup table and reports mean luma and the bright fraction. Nothing is written to disk and the buffer is reused. Capture pauses while idle.
 
 ## Sky
 

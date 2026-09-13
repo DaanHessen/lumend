@@ -174,6 +174,10 @@ impl Controller {
         }
     }
 
+    pub fn ignore_level_changes_until(&mut self, until: f64) {
+        self.resync_until = self.resync_until.max(until);
+    }
+
     pub fn tick(&mut self, now: f64, target: Prediction) -> Vec<Action> {
         let dt = self.last_tick.map_or(0.0, |t| now - t);
         self.last_tick = Some(now);
