@@ -2,12 +2,12 @@
 
 pkgname=lumend
 pkgver=0.1.0
-pkgrel=1
+pkgrel=2
 pkgdesc="Adaptive screen brightness for Wayland laptops without a light sensor"
 arch=('x86_64' 'aarch64')
 url="https://github.com/DaanHessen/lumend"
 license=('MIT')
-depends=('gcc-libs' 'glibc')
+depends=('libgcc' 'glibc')
 makedepends=('cargo')
 optdepends=(
   'hyprland: window, fullscreen, idle and screen content signals'
@@ -18,7 +18,7 @@ optdepends=(
 options=('!lto')
 conflicts=('lumend-git')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
-sha256sums=('SKIP')
+sha256sums=('ecf82a3d00a9267e71f2627766602bce2d1652b1ddf2ea0d1e7220a8f29c4ead')
 
 prepare() {
   cd "$pkgname-$pkgver"
