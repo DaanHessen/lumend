@@ -1,0 +1,47 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release:
+    name: build and publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check tag matches Cargo.toml
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          ver="$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
+          [ "$tag" = "$ver" ] || { echo "tag v$tag does not match Cargo.toml $ver"; exit 1; }
+          echo "VERSION=$ver" >> "$GITHUB_ENV"
+
+      - run: cargo test --locked
+      - run: cargo build --release --locked
+
+      - name: Package
+        run: |
+          name="lumend-${VERSION}-x86_64-linux"
+          mkdir -p "$name"
+          cp target/release/lumend dist/lumend.service dist/config.toml README.md LICENSE "$name"/
+          tar czf "$name.tar.gz" "$name"
+          sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "lumend $VERSION" \
+            --generate-notes \
+            lumend-*.tar.gz lumend-*.tar.gz.sha256

@@ -47,12 +47,14 @@ lumend sets brightness through systemd-logind, the same unprivileged call deskto
 
 ## Install
 
-From the AUR:
+From the AUR, either the latest release or the development version:
 
 ```sh
-paru -S lumend-git
+paru -S lumend        # or: paru -S lumend-git
 systemctl --user enable --now lumend
 ```
+
+Prebuilt x86_64 binaries are attached to each [GitHub release](https://github.com/DaanHessen/lumend/releases).
 
 From source (Rust 1.90 or newer):
 

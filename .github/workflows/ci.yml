@@ -16,7 +16,7 @@ jobs:
     name: fmt, clippy, test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -29,7 +29,7 @@ jobs:
     name: minimum Rust version
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@1.90
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --locked
@@ -40,7 +40,7 @@ jobs:
     container: archlinux:base-devel
     steps:
       - run: pacman -Syu --noconfirm --needed git rust
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: makepkg from this commit
         run: |
           useradd -m builder
